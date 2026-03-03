@@ -30,15 +30,17 @@ podAnnotations: {}
 podLabels: {}
 
 podSecurityContext:
-  enabled: true
-  fsGroup: 999
+  enabled: false
+  runAsUser: 70
+  runAsGroup: 70
+  fsGroup: 70
   fsGroupChangePolicy: OnRootMismatch
 
 securityContext:
-  enabled: true
+  enabled: false
   runAsNonRoot: true
-  runAsUser: 999
-  runAsGroup: 999
+  runAsUser: 70
+  runAsGroup: 70
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: false
   capabilities:
@@ -79,6 +81,21 @@ extraVolumeMounts: []
 extraVolumes: []
 initContainers: []
 extraContainers: []
+
+volumePermissions:
+  enabled: false
+  image:
+    registry: ""
+    repository: public.ecr.aws/docker/library/busybox
+    tag: "1.36.1"
+    pullPolicy: IfNotPresent
+  command: []
+  args: []
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  resources: {}
+  extraVolumeMounts: []
 
 resources: {}
 nodeSelector: {}
