@@ -12,6 +12,9 @@ provisioned through `volumeClaimTemplates`.
   chart values.
 - Configurable readiness and liveness probes based on `pg_isready`.
 - PVC sizing, storage class, and mount points are fully configurable.
+- Optional pod-level security context defaults tailored for
+  `postgres:16.6-alpine`, with a gated volume-permissions init
+  container to repair filesystem ownership when required.
 - Common pod customisations (resources, affinity, tolerations, extra
   volumes, etc.) exposed through values.
 

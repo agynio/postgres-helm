@@ -2,7 +2,7 @@ apiVersion: v2
 name: postgres-helm
 description: Helm chart for deploying PostgreSQL using the agynio service-base library.
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "16.6"
 home: https://github.com/agynio/postgres-helm
 sources:

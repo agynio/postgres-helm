@@ -18,6 +18,7 @@
 {{- $_ := set $ctx "Values" $values -}}
 {{- $persistence := $values.persistence | default (dict) -}}
 {{- $persistenceEnabled := default false $persistence.enabled -}}
+{{- $volumePermissions := $values.volumePermissions | default (dict) -}}
 {{- $volumeName := default "data" $persistence.volumeClaimTemplateName -}}
 {{- $mountPath := required "persistence.mountPath is required" $persistence.mountPath -}}
 apiVersion: apps/v1
@@ -68,9 +69,32 @@ spec:
 {{- if not (eq $values.terminationGracePeriodSeconds nil) }}
       terminationGracePeriodSeconds: {{ $values.terminationGracePeriodSeconds }}
 {{- end }}
-{{- if $values.initContainers }}
+{{- $initContainers := list -}}
+{{- $volumePermissionsEnabled := and $persistenceEnabled (default false $volumePermissions.enabled) -}}
+{{- if $volumePermissionsEnabled }}
+  {{- $runAsUser := dig 70 "securityContext" "runAsUser" $values -}}
+  {{- $runAsGroup := dig $runAsUser "securityContext" "runAsGroup" $values -}}
+  {{- $vpCommand := default (list "sh" "-ec") $volumePermissions.command -}}
+  {{- $vpArgs := default (list (printf "chown -R %d:%d %s" $runAsUser $runAsGroup $mountPath)) $volumePermissions.args -}}
+  {{- $vpVolumeMounts := list (dict "name" $volumeName "mountPath" $mountPath) -}}
+  {{- range $volumePermissions.extraVolumeMounts | default (list) }}
+    {{- $vpVolumeMounts = append $vpVolumeMounts . -}}
+  {{- end }}
+  {{- $vpContainer := dict "name" "volume-permissions" "image" (include "postgres-helm.volumePermissionsImage" $ctx) "imagePullPolicy" (dig "IfNotPresent" "image" "pullPolicy" $volumePermissions) "command" $vpCommand "args" $vpArgs "volumeMounts" $vpVolumeMounts -}}
+  {{- if $volumePermissions.securityContext }}
+    {{- $_ := set $vpContainer "securityContext" $volumePermissions.securityContext -}}
+  {{- end }}
+  {{- if $volumePermissions.resources }}
+    {{- $_ := set $vpContainer "resources" $volumePermissions.resources -}}
+  {{- end }}
+  {{- $initContainers = append $initContainers $vpContainer -}}
+{{- end }}
+{{- range $values.initContainers | default (list) }}
+  {{- $initContainers = append $initContainers . -}}
+{{- end }}
+{{- if gt (len $initContainers) 0 }}
       initContainers:
-{{ toYaml $values.initContainers | nindent 8 }}
+{{ toYaml $initContainers | nindent 8 }}
 {{- end }}
       containers:
         - name: {{ include "service-base.name" $ctx }}
