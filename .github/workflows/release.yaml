@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CHART_REGISTRY: oci://ghcr.io/agynio/charts
+  CHART_PATH: charts/postgres-helm
+
+jobs:
+  charts:
+    name: Package and publish Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract release version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_NAME}" != v*.*.* ]]; then
+            echo "Tag must follow v*.*.*" >&2
+            exit 1
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "RELEASE_VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Build chart dependencies
+        run: |
+          helm dependency build "${{ env.CHART_PATH }}"
+
+      - name: Lint chart
+        run: |
+          helm lint "${{ env.CHART_PATH }}"
+
+      - name: Package chart
+        run: |
+          mkdir -p dist
+          helm package "${{ env.CHART_PATH }}" \
+            --destination dist \
+            --version "${RELEASE_VERSION}" \
+            --app-version "${RELEASE_VERSION}"
+
+      - name: Push chart
+        run: |
+          helm push "dist/postgres-helm-${RELEASE_VERSION}.tgz" "${{ env.CHART_REGISTRY }}"

@@ -1,0 +1,10 @@
+PostgreSQL service: {{ include "service-base.fullname" . }}
+
+To connect from your workstation:
+
+```bash
+kubectl port-forward \
+  svc/{{ include "service-base.fullname" . }} \
+  5432:5432
+# Connect with psql using the configured credentials.
+```

@@ -1,0 +1,53 @@
+fullnameOverride: platform-db
+
+image:
+  repository: postgres
+  tag: 16.6-alpine
+
+postgres:
+  database: agents
+  username: agents
+  password: example-password
+  pgdata: /var/lib/postgresql/data/pgdata
+
+service:
+  labels:
+    app.kubernetes.io/component: database
+
+probes:
+  readiness:
+    execCommand:
+      - pg_isready
+      - -U
+      - agents
+      - -d
+      - agents
+  liveness:
+    execCommand:
+      - pg_isready
+      - -U
+      - agents
+      - -d
+      - agents
+
+persistence:
+  size: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  volumeClaimTemplateName: data
+  mountPath: /var/lib/postgresql/data
+  storageClassName: gp3
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: databases
+    effect: NoSchedule

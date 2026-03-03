@@ -1,0 +1,195 @@
+{{- $ctx := deepCopy . -}}
+{{- $values := deepCopy .Values -}}
+{{- $postgres := $values.postgres | default (dict) -}}
+{{- $database := required "postgres.database is required" $postgres.database -}}
+{{- $username := required "postgres.username is required" $postgres.username -}}
+{{- $pgdata := required "postgres.pgdata is required" $postgres.pgdata -}}
+{{- $passwordKey := include "postgres-helm.passwordKey" . -}}
+{{- $secretName := include "postgres-helm.secretName" . -}}
+{{- $env := list -}}
+{{- $env = append $env (dict "name" "POSTGRES_DB" "value" $database) -}}
+{{- $env = append $env (dict "name" "POSTGRES_USER" "value" $username) -}}
+{{- $env = append $env (dict "name" "PGDATA" "value" $pgdata) -}}
+{{- $env = append $env (dict "name" "POSTGRES_PASSWORD" "valueFrom" (dict "secretKeyRef" (dict "name" $secretName "key" $passwordKey))) -}}
+{{- range $values.env }}
+  {{- $env = append $env (deepCopy .) -}}
+{{- end -}}
+{{- $_ := set $values "env" $env -}}
+{{- $_ := set $ctx "Values" $values -}}
+{{- $persistence := $values.persistence | default (dict) -}}
+{{- $persistenceEnabled := default false $persistence.enabled -}}
+{{- $volumeName := default "data" $persistence.volumeClaimTemplateName -}}
+{{- $mountPath := required "persistence.mountPath is required" $persistence.mountPath -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "service-base.fullname" $ctx }}
+  labels:
+{{ include "service-base.labels" $ctx | nindent 4 }}
+  {{- $annotations := include "service-base.commonAnnotations" $ctx }}
+  {{- if $annotations }}
+  annotations:
+{{ $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $values.replicaCount }}
+  serviceName: {{ include "service-base.fullname" $ctx }}
+  revisionHistoryLimit: {{ $values.revisionHistoryLimit }}
+  {{- with $values.updateStrategy }}
+  updateStrategy:
+{{ toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+{{ include "service-base.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+{{ include "service-base.selectorLabels" $ctx | nindent 8 }}
+{{- with $values.podLabels }}
+{{ toYaml . | nindent 8 }}
+{{- end }}
+{{- with $values.podAnnotations }}
+      annotations:
+{{ toYaml . | nindent 8 }}
+{{- end }}
+    spec:
+      serviceAccountName: {{ include "service-base.serviceAccountName" $ctx }}
+      automountServiceAccountToken: {{ $values.automountServiceAccountToken }}
+{{ include "service-base.imagePullSecrets" $ctx | nindent 6 }}
+{{- $podSecurityContext := include "service-base.podSecurityContext" $ctx }}
+{{- if $podSecurityContext }}
+      securityContext:
+{{ $podSecurityContext | nindent 8 }}
+{{- end }}
+{{- if $values.priorityClassName }}
+      priorityClassName: {{ $values.priorityClassName }}
+{{- end }}
+{{- if not (eq $values.terminationGracePeriodSeconds nil) }}
+      terminationGracePeriodSeconds: {{ $values.terminationGracePeriodSeconds }}
+{{- end }}
+{{- if $values.initContainers }}
+      initContainers:
+{{ toYaml $values.initContainers | nindent 8 }}
+{{- end }}
+      containers:
+        - name: {{ include "service-base.name" $ctx }}
+          image: {{ include "service-base.image" $ctx | quote }}
+          imagePullPolicy: {{ $values.image.pullPolicy }}
+{{- if $values.command }}
+          command:
+{{ toYaml $values.command | nindent 12 }}
+{{- end }}
+{{- if $values.args }}
+          args:
+{{ toYaml $values.args | nindent 12 }}
+{{- end }}
+{{- if $values.containerPorts }}
+          ports:
+{{ toYaml $values.containerPorts | nindent 12 }}
+{{- end }}
+{{- $envYaml := include "service-base.renderEnv" $ctx }}
+{{- if $envYaml }}
+{{ $envYaml | nindent 10 }}
+{{- end }}
+{{- $envFrom := include "service-base.renderEnvFrom" $ctx }}
+{{- if $envFrom }}
+{{ $envFrom | nindent 10 }}
+{{- end }}
+{{- with $values.resources }}
+          resources:
+{{ toYaml . | nindent 12 }}
+{{- end }}
+{{- $containerSecurityContext := include "service-base.securityContext" $ctx }}
+{{- if $containerSecurityContext }}
+          securityContext:
+{{ $containerSecurityContext | nindent 12 }}
+{{- end }}
+{{- with $values.lifecycle }}
+          lifecycle:
+{{ toYaml . | nindent 12 }}
+{{- end }}
+{{- $readiness := $values.probes.readiness }}
+{{- if and $readiness.enabled ($readiness.execCommand) }}
+          readinessProbe:
+            exec:
+              command:
+{{ toYaml $readiness.execCommand | nindent 16 }}
+            initialDelaySeconds: {{ $readiness.initialDelaySeconds }}
+            periodSeconds: {{ $readiness.periodSeconds }}
+            timeoutSeconds: {{ $readiness.timeoutSeconds }}
+            failureThreshold: {{ $readiness.failureThreshold }}
+{{- end }}
+{{- $liveness := $values.probes.liveness }}
+{{- if and $liveness.enabled ($liveness.execCommand) }}
+          livenessProbe:
+            exec:
+              command:
+{{ toYaml $liveness.execCommand | nindent 16 }}
+            initialDelaySeconds: {{ $liveness.initialDelaySeconds }}
+            periodSeconds: {{ $liveness.periodSeconds }}
+            timeoutSeconds: {{ $liveness.timeoutSeconds }}
+            failureThreshold: {{ $liveness.failureThreshold }}
+{{- end }}
+{{- $hasVolumeMounts := or $persistenceEnabled (or $values.configMounts $values.extraVolumeMounts) }}
+{{- if $hasVolumeMounts }}
+          volumeMounts:
+{{- if $persistenceEnabled }}
+            - name: {{ $volumeName }}
+              mountPath: {{ $mountPath }}
+{{- end }}
+{{- if $values.configMounts }}
+{{ include "service-base.config" $ctx | nindent 12 }}
+{{- end }}
+{{- $extraMounts := include "service-base.renderExtraVolumeMounts" $ctx }}
+{{- if $extraMounts }}
+{{ $extraMounts | nindent 12 }}
+{{- end }}
+{{- end }}
+{{- if $values.extraContainers }}
+{{ toYaml $values.extraContainers | nindent 8 }}
+{{- end }}
+{{- if or $values.configMounts $values.extraVolumes }}
+      volumes:
+{{- if $values.configMounts }}
+{{ include "service-base.configVolumes" $ctx | nindent 8 }}
+{{- end }}
+{{- $extraVolumes := include "service-base.renderExtraVolumes" $ctx }}
+{{- if $extraVolumes }}
+{{ $extraVolumes | nindent 8 }}
+{{- end }}
+{{- end }}
+{{- with $values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+{{ toYaml . | nindent 8 }}
+{{- end }}
+{{- with $values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | nindent 8 }}
+{{- end }}
+{{- with $values.affinity }}
+      affinity:
+{{ toYaml . | nindent 8 }}
+{{- end }}
+{{- with $values.tolerations }}
+      tolerations:
+{{ toYaml . | nindent 8 }}
+{{- end }}
+{{- if $persistenceEnabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: {{ $volumeName }}
+{{- with $persistence.annotations }}
+        annotations:
+{{ toYaml . | nindent 10 }}
+{{- end }}
+      spec:
+        accessModes:
+{{ toYaml $persistence.accessModes | nindent 10 }}
+        resources:
+          requests:
+            storage: {{ $persistence.size }}
+{{- if $persistence.storageClassName }}
+        storageClassName: {{ $persistence.storageClassName }}
+{{- end }}
+{{- end }}
